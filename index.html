@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Brain Training Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand"><span class="dot"></span>Brain Studio</div>
+    <p>Train your brain. Improve speed & memory.</p>
+  </div>
+</header>
+
+<main>
+  <!-- Main Game Selection Grid -->
+  <div class="tiles" id="homeView">
+    <div class="tile flash-anzan" onclick="openGameSetup('flashAnzan')">
+      <div class="icon">🧠</div>
+      <h2>Flash Anzan</h2>
+      <p>Flash mental arithmetic</p>
+      <div class="row"><span class="best">Best: <b id="score-flashAnzan">--</b></span><span class="go">→</span></div>
+    </div>
+
+    <div class="tile speed-math" onclick="openGameSetup('speedMath')">
+      <div class="icon">⚡</div>
+      <h2>Speed Math</h2>
+      <p>Rapid arithmetic duels</p>
+      <div class="row"><span class="best">Streak: <b id="score-speedMath">0</b></span><span class="go">→</span></div>
+    </div>
+
+    <div class="tile letter-code" onclick="openGameSetup('letterCode')">
+      <div class="icon">🔤</div>
+      <h2>Letter Coding</h2>
+      <p>Convert letters to positions</p>
+      <div class="row"><span class="best">Streak: <b id="score-letterCode">0</b></span><span class="go">→</span></div>
+    </div>
+
+    <div class="tile flash-alpha" onclick="openGameSetup('flashAlpha')">
+      <div class="icon">🔠</div>
+      <h2>Flash Letter Sum</h2>
+      <p>Sum flashed letter values</p>
+      <div class="row"><span class="best">Best: <b id="score-flashAlpha">--</b></span><span class="go">→</span></div>
+    </div>
+
+    <div class="tile element-quiz" onclick="openGameSetup('elementQuiz')">
+      <div class="icon">🧪</div>
+      <h2>Element Quiz</h2>
+      <p>Symbol, weight & atomic number</p>
+      <div class="row"><span class="best">Streak: <b id="score-elementQuiz">0</b></span><span class="go">→</span></div>
+    </div>
+
+    <div class="tile morse-code" onclick="openGameSetup('morseCode')">
+      <div class="icon">📡</div>
+      <h2>Morse Code</h2>
+      <p>Tap/hold space for dot / dash</p>
+      <div class="row"><span class="best">Streak: <b id="score-morseCode">0</b></span><span class="go">→</span></div>
+    </div>
+  </div>
+
+  <!-- Game Control Container -->
+  <section id="panelView" class="panel hidden">
+    <button class="back-btn" onclick="navigateToHome()">← Back</button>
+    <h2 class="game-title" id="panelTitle"></h2>
+    <div id="panelContent"></div>
+  </section>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

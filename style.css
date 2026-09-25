@@ -178,3 +178,32 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .streak { font-size: 12.5px; color: var(--text-dim); margin-top: 16px; }
 .streak b { color: var(--text); }
 .hidden { display: none; }
+
+/* ---- Morse Code Mobile Tap Pad ---- */
+.morse-tap-pad {
+  width: 100%;
+  max-width: 320px;
+  margin: 16px auto;
+  padding: 30px;
+  background: #191c34;
+  border: 2px dashed var(--morse-a);
+  border-radius: 16px;
+  color: var(--morse-a);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  
+  /* Critical rules to prevent mobile browser zooming, selecting, or scrolling while holding */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  
+  transition: background 0.1s, transform 0.1s;
+}
+
+.morse-tap-pad:active, 
+.morse-tap-pad.active {
+  background: var(--morse-a);
+  color: #0a0b14;
+  transform: scale(0.97);
+}

@@ -67,8 +67,9 @@ function renderFlashAnzanSetup(){
       ${chipRow('anzanDigits',[{v:1,label:'1 digit'},{v:2,label:'2 digit'},{v:3,label:'3 digit'}],anzanDigits,'flash-anzan')}</div>
     <div class="opt-group"><div class="opt-label">How many numbers</div>
       ${chipRow('anzanCount',[{v:3,label:'3'},{v:5,label:'5'},{v:7,label:'7'},{v:10,label:'10'}],anzanCount,'flash-anzan')}</div>
-    <div class="opt-group"><div class="opt-label">Flash speed</div>
-      ${chipRow('anzanSpeed',[{v:1200,label:'Slow'},{v:800,label:'Normal'},{v:500,label:'Fast'}],anzanSpeed,'flash-anzan')}</div>
+    <div class="opt-group"><div class="opt-label">Flash speed (milliseconds)</div>
+      <input class="field" type="number" id="anzanSpeedInput" value="${window.anzanSpeed}" min="100" max="5000" step="50" oninput="window.anzanSpeed = Number(this.value)" style="width: 140px; padding: 10px; font-size: 16px;">
+    </div>
     <div class="opt-group"><div class="opt-label">Operation</div>
       ${chipRow('anzanOp',[{v:'add',label:'Addition only'},{v:'mixed',label:'Addition & subtraction'}],anzanOp,'flash-anzan')}</div>
     <button class="primary-btn flash-anzan" onclick="startFlashAnzan()">Start</button>
@@ -359,38 +360,70 @@ function checkElementQuiz(){
 const MORSE = {A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',
 M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',
 '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.'};
-window.morseSet = 'letters'; window.morseThreshold = 300; window.morseStreak = 0; window.morseActive = false;
+window.morseSet = 'letters'; window.morseMode = 'normal'; window.morseThreshold = 300; window.morseStreak = 0; window.morseActive = false;
+let morseInputAt = 0; // Tracks when a tap/hold starts
+
 function renderMorseCodeSetup(){
   window.morseStreak = 0;
   panelTitle.innerText = '📡 Morse Code';
   panelContent.innerHTML = `
+   <div class="opt-group"><div class="opt-label">Mode</div>
+      ${chipRow('morseMode',[{v:'normal',label:'Normal (A → ·—)'},{v:'reverse',label:'Reverse (·— → A)'}],morseMode,'morse-code')}</div>
     <div class="opt-group"><div class="opt-label">Character set</div>
       ${chipRow('morseSet',[{v:'letters',label:'Letters'},{v:'numbers',label:'Numbers'},{v:'mixed',label:'Mixed'}],morseSet,'morse-code')}</div>
     <div class="opt-group"><div class="opt-label">Tap sensitivity</div>
       ${chipRow('morseThreshold',[{v:400,label:'Slow'},{v:300,label:'Normal'},{v:220,label:'Fast'}],morseThreshold,'morse-code')}</div>
-    <p class="hint">Tap the spacebar quickly for a dot, hold it down for a dash.</p>
+    <p class="hint">Tap quickly for a dot, hold down for a dash.</p>
     <button class="primary-btn morse-code" onclick="startMorseCode()">Start</button>
   `;
 }
+
 function startMorseCode(){
   panelTitle.innerText = '📡 Morse Code';
   const pool = window.morseSet==='letters' ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
     : window.morseSet==='numbers' ? '0123456789'.split('')
     : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
   window.morseChar = pool[Math.floor(Math.random()*pool.length)];
-  window.morseBuffer = '';
-  window.morseActive = true;
-  panelContent.innerHTML = `
-    <div class="stage">
-      <div class="prompt">${window.morseChar}</div>
-      <p class="opt-label">Tap Space for a dot · hold Space for a dash</p>
-      <div class="morse-buffer" id="morseDisplay">&nbsp;</div>
-      <div>
-        <button class="back-btn" type="button" onclick="clearMorseBuffer()">Clear</button>
-        <button class="primary-btn morse-code" onclick="checkMorseCode()">Submit</button>
-      </div>
-    </div>`;
+
+  if(window.morseMode === 'reverse'){
+    window.morseActive = false; // Disable touch/spacebar listening
+    const codeDisplay = MORSE[window.morseChar];
+    panelContent.innerHTML = `
+      <div class="stage">
+        <div class="prompt" style="letter-spacing: 8px;">${codeDisplay}</div>
+        <p class="opt-label">Type the matching character</p>
+        <input class="field" id="morseReverseInput" type="text" maxlength="1" autofocus style="text-transform: uppercase; width: 80px; text-align: center; font-size: 28px;">
+        <div>
+          <button class="primary-btn morse-code" onclick="checkMorseCode()">Submit</button>
+        </div>
+      </div>`;
+  } else {
+    window.morseBuffer = '';
+    window.morseActive = true;
+    morseInputAt = 0;
+    panelContent.innerHTML = `
+      <div class="stage">
+        <div class="prompt">${window.morseChar}</div>
+        <p class="opt-label">Tap Spacebar or use the pad below</p>
+        
+        <div class="morse-tap-pad" 
+             onpointerdown="triggerMorseDown(event); this.classList.add('active')" 
+             onpointerup="triggerMorseUp(event); this.classList.remove('active')" 
+             onpointerleave="triggerMorseUp(event); this.classList.remove('active')"
+             onpointercancel="triggerMorseUp(event); this.classList.remove('active')"
+             oncontextmenu="return false;">
+          TAP / HOLD HERE
+        </div>
+
+        <div class="morse-buffer" id="morseDisplay">&nbsp;</div>
+        <div>
+          <button class="back-btn" type="button" onclick="clearMorseBuffer()">Clear</button>
+          <button class="primary-btn morse-code" onclick="checkMorseCode()">Submit</button>
+        </div>
+      </div>`;
+  }
 }
+
 function updateMorseDisplay(){
   const d = document.getElementById('morseDisplay');
   if(d) d.innerText = window.morseBuffer || '\u00A0';
@@ -398,30 +431,60 @@ function updateMorseDisplay(){
 function clearMorseBuffer(){ window.morseBuffer=''; updateMorseDisplay(); }
 function checkMorseCode(){
   window.morseActive = false;
-  const correct = MORSE[window.morseChar];
-  const ok = window.morseBuffer === correct;
-  window.morseStreak = ok ? window.morseStreak+1 : 0;
-  if(ok && window.morseStreak > (store.morseCode||0)){ store.morseCode = window.morseStreak; saveStore(); refreshBadges(); }
+  let ok = false;
+  let message = '';
+
+  if(window.morseMode === 'reverse'){
+    const inputVal = (document.getElementById('morseReverseInput').value || '').trim().toUpperCase();
+    ok = inputVal === window.morseChar;
+    message = ok ? 'Perfect decoding.' : MORSE[window.morseChar] + ' is ' + window.morseChar + ' — you typed ' + (inputVal || 'nothing');
+  } else {
+    const correct = MORSE[window.morseChar];
+    ok = window.morseBuffer === correct;
+    message = ok ? 'Perfect timing.' : window.morseChar + ' is ' + correct + ' — you sent ' + (window.morseBuffer || 'nothing');
+  }
+
+  window.morseStreak = ok ? window.morseStreak + 1 : 0;
+  if(ok && window.morseStreak > (store.morseCode || 0)){ 
+    store.morseCode = window.morseStreak; 
+    saveStore(); 
+    refreshBadges(); 
+  }
+
   panelContent.innerHTML = `
-    <div class="result ${ok?'ok':'no'}">
-      <h2>${ok?'🎉 Correct!':'❌ Not quite'}</h2>
-      <p>${ok?'Perfect timing.':window.morseChar+' is '+correct+' — you sent '+(window.morseBuffer||'nothing')}</p>
-      <button class="primary-btn morse-code" onclick="startMorseCode()">Next letter</button>
+    <div class="result ${ok ? 'ok' : 'no'}">
+      <h2>${ok ? '🎉 Correct!' : '❌ Not quite'}</h2>
+      <p>${message}</p>
+      <button class="primary-btn morse-code" onclick="startMorseCode()">Next round</button>
       <div class="streak">Current streak: <b>${window.morseStreak}</b></div>
     </div>`;
 }
-let morseKeyDownAt = 0;
+
+// Unified input handlers for Touch & Keyboard
+function triggerMorseDown(e) {
+  if(e && e.type !== 'keydown') e.preventDefault();
+  if(!window.morseActive) return;
+  if(morseInputAt === 0) morseInputAt = Date.now();
+}
+
+function triggerMorseUp(e) {
+  if(e && e.type !== 'keyup') e.preventDefault();
+  if(!window.morseActive || morseInputAt === 0) return;
+  const dur = Date.now() - morseInputAt;
+  window.morseBuffer += dur < window.morseThreshold ? '.' : '-';
+  updateMorseDisplay();
+  morseInputAt = 0; // Reset for next tap
+}
+
 document.addEventListener('keydown', (e)=>{
   if(window.morseActive && e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat) morseKeyDownAt = Date.now();
+    if(!e.repeat) triggerMorseDown(e);
   }
 });
 document.addEventListener('keyup', (e)=>{
   if(window.morseActive && e.code==='Space'){
     e.preventDefault();
-    const dur = Date.now() - morseKeyDownAt;
-    window.morseBuffer += dur < window.morseThreshold ? '.' : '-';
-    updateMorseDisplay();
+    triggerMorseUp(e);
   }
 });

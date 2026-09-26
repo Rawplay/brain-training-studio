@@ -3,7 +3,7 @@ const panelView = document.getElementById('panelView');
 const panelTitle = document.getElementById('panelTitle');
 const panelContent = document.getElementById('panelContent');
 
-let store = { flashAnzan:0, speedMath:0, letterCode:0, flashAlpha:0, elementQuiz:0, morseCode:0, angleTable:0 };
+let store = { flashAnzan:0, speedMath:0, letterCode:0, flashAlpha:0, elementQuiz:0, morseCode:0, angleTable:0, pythTriples:0 };
 try{
   const saved = localStorage.getItem('brainstudio-scores');
   if(saved) store = Object.assign(store, JSON.parse(saved));
@@ -17,12 +17,13 @@ function refreshBadges(){
   document.getElementById('score-elementQuiz').innerText = store.elementQuiz || 0;
   document.getElementById('score-morseCode').innerText = store.morseCode || 0;
   document.getElementById('score-angleTable').innerText = store.angleTable || 0;
+  document.getElementById('score-pythTriples').innerText = store.pythTriples || 0;
 
   // ---- Extend badges: surface each game's best timed-session accuracy as a tooltip ----
   const accHints = {
     speedMath:'speedMathBestAccuracy', letterCode:'letterCodeBestAccuracy',
     flashAlpha:'flashAlphaBestAccuracy', elementQuiz:'elementQuizBestAccuracy', morseCode:'morseCodeBestAccuracy',
-    angleTable:'angleTableBestAccuracy'
+    angleTable:'angleTableBestAccuracy', pythTriples:'pythTriplesBestAccuracy'
   };
   Object.keys(accHints).forEach(key=>{
     const el = document.getElementById('score-'+key);
@@ -48,6 +49,7 @@ function openGameSetup(type){
   if(type==='elementQuiz') renderElementQuizSetup();
   if(type==='morseCode') renderMorseCodeSetup();
   if(type==='angleTable') renderAngleTableSetup();
+  if(type==='pythTriples') renderPythTriplesSetup();
 }
 
 /* ---- shared chip helpers ---- */
@@ -865,5 +867,73 @@ function checkAngleTable(){
       <p>${ok ? 'Trig mastery.' : 'Correct: '+correctDisplay+' — you typed: '+userDisplay+(window.angleMode==='reverse' ? ' (any function+angle equal to '+window.angleValue+' works)' : '')}</p>
       <button class="primary-btn angle-table" onclick="startAngleTable()">Next question</button>
       <div class="streak">Current streak: <b>${window.angleStreak}</b></div>
+    </div>`;
+}
+
+/* ================= PYTHAGOREAN TRIPLES ================= */
+// Curated triples (a, b, c) with a² + b² = c², grouped by difficulty. Higher difficulties
+// add larger / less-common triples on top of the easy set. Default difficulty is Easy.
+const PYTH_TRIPLES = {
+  easy:   [[3,4,5],[6,8,10],[5,12,13],[9,12,15],[30,40,50],[33,44,55],[15,20,25]],
+  medium: [[3,4,5],[6,8,10],[5,12,13],[9,12,15],[8,15,17],[7,24,25],[10,24,26],[20,21,29],[12,16,20],[12,35,37]],
+  hard:   [[3,4,5],[5,12,13],[8,15,17],[7,24,25],[9,40,41],[11,60,61],[12,35,37],[24,70,74],[14,48,50],
+           [15,36,39],[16,30,34],[18,24,30],[20,21,29],[28,45,53],[33,56,65],[48,55,73],[10,24,26]]
+};
+window.pythDifficulty = 'easy'; window.pythTimeLimit = 0; window.pythStreak = 0;
+
+function renderPythTriplesSetup(){
+  window.pythStreak = 0;
+  panelTitle.innerText = '🔺 Pythagorean Triples';
+  panelContent.innerHTML = `
+    <div class="opt-group"><div class="opt-label">Difficulty</div>
+      ${chipRow('pythDifficulty',[{v:'easy',label:'Easy'},{v:'medium',label:'Medium'},{v:'hard',label:'Hard'}],pythDifficulty,'pyth-triples')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('pythTimeLimit',[0,60,120],pythTimeLimit,'pyth-triples')}</div>
+    <p class="hint">Given two sides of a right triangle, find the third — a & b are the legs, c is the hypotenuse (a² + b² = c²).</p>
+    <button class="primary-btn pyth-triples" onclick="startPythTriples()">Start</button>
+  `;
+}
+function startPythTriples(){
+  panelTitle.innerText = '🔺 Pythagorean Triples';
+  if(window.pythTimeLimit>0 && !window.session){
+    startSession('pythTriples', window.pythTimeLimit, ()=> showSessionSummary('pyth-triples','🔺 Pythagorean Triples','startPythTriples'));
+  }
+  const pool = PYTH_TRIPLES[window.pythDifficulty] || PYTH_TRIPLES.easy;
+  const triple = pool[Math.floor(Math.random()*pool.length)];
+  const hideIndex = Math.floor(Math.random()*3); // 0=a, 1=b, 2=c (hypotenuse)
+  window.pythTriple = triple; window.pythHideIndex = hideIndex;
+  const labels = ['a','b','c'];
+  const display = triple.map((v,i)=> i===hideIndex ? `${labels[i]} = ?` : `${labels[i]} = ${v}`).join(',  ');
+  panelContent.innerHTML = `
+    <div class="stage">${sessionTimerHtml()}
+      <div class="prompt" style="font-size:32px;">${display}</div>
+      <p class="opt-label">a & b are the legs, c is the hypotenuse</p>
+      <input class="field" id="pythAnswer" type="number" autofocus>
+      <div><button class="primary-btn pyth-triples" onclick="checkPythTriples()">Submit</button></div>
+    </div>`;
+}
+function checkPythTriples(){
+  const inputEl = document.getElementById('pythAnswer');
+  const val = Number(inputEl.value);
+  const correct = window.pythTriple[window.pythHideIndex];
+  const ok = val === correct;
+  const labels = ['a','b','c'];
+  const prompt = window.pythTriple.map((v,i)=> i===window.pythHideIndex ? labels[i]+'=?' : labels[i]+'='+v).join(', ');
+
+  if(window.session){
+    sessionRecordAnswer(prompt, val, correct, ok);
+    flashFeedback(inputEl, ok);
+    setTimeout(()=>{ if(window.session) startPythTriples(); }, 200);
+    return;
+  }
+
+  window.pythStreak = ok ? window.pythStreak+1 : 0;
+  if(ok && window.pythStreak > (store.pythTriples||0)){ store.pythTriples = window.pythStreak; saveStore(); refreshBadges(); }
+  panelContent.innerHTML = `
+    <div class="result ${ok?'ok':'no'}">
+      <h2>${ok?'🎉 Correct!':'❌ Answer: '+correct}</h2>
+      <p>${ok ? 'Right-triangle mastery.' : 'The full triple is '+window.pythTriple.join('-')+'.'}</p>
+      <button class="primary-btn pyth-triples" onclick="startPythTriples()">Next question</button>
+      <div class="streak">Current streak: <b>${window.pythStreak}</b></div>
     </div>`;
 }

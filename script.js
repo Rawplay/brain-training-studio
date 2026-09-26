@@ -3,7 +3,7 @@ const panelView = document.getElementById('panelView');
 const panelTitle = document.getElementById('panelTitle');
 const panelContent = document.getElementById('panelContent');
 
-let store = { flashAnzan:0, speedMath:0, letterCode:0, flashAlpha:0, elementQuiz:0, morseCode:0 };
+let store = { flashAnzan:0, speedMath:0, letterCode:0, flashAlpha:0, elementQuiz:0, morseCode:0, angleTable:0 };
 try{
   const saved = localStorage.getItem('brainstudio-scores');
   if(saved) store = Object.assign(store, JSON.parse(saved));
@@ -16,11 +16,25 @@ function refreshBadges(){
   document.getElementById('score-flashAlpha').innerText = store.flashAlpha || '--';
   document.getElementById('score-elementQuiz').innerText = store.elementQuiz || 0;
   document.getElementById('score-morseCode').innerText = store.morseCode || 0;
+  document.getElementById('score-angleTable').innerText = store.angleTable || 0;
+
+  // ---- Extend badges: surface each game's best timed-session accuracy as a tooltip ----
+  const accHints = {
+    speedMath:'speedMathBestAccuracy', letterCode:'letterCodeBestAccuracy',
+    flashAlpha:'flashAlphaBestAccuracy', elementQuiz:'elementQuizBestAccuracy', morseCode:'morseCodeBestAccuracy',
+    angleTable:'angleTableBestAccuracy'
+  };
+  Object.keys(accHints).forEach(key=>{
+    const el = document.getElementById('score-'+key);
+    const acc = store[accHints[key]];
+    if(el && acc!=null) el.title = 'Best session accuracy: '+acc+'%';
+  });
 }
 refreshBadges();
 
 function navigateToHome(){
   window.morseActive = false;
+  endSession();
   panelView.classList.add('hidden');
   homeView.style.display = 'grid';
 }
@@ -33,6 +47,7 @@ function openGameSetup(type){
   if(type==='flashAlpha') renderFlashAlphaSetup();
   if(type==='elementQuiz') renderElementQuizSetup();
   if(type==='morseCode') renderMorseCodeSetup();
+  if(type==='angleTable') renderAngleTableSetup();
 }
 
 /* ---- shared chip helpers ---- */
@@ -57,16 +72,123 @@ function toggleOpt(name, val, el){
   }
   window[name] = arr;
 }
+// Shared "time limit" chip row (0 = Off). Reused by Flash Letter Sum, Letter Coding,
+// Morse Code, Element Quiz and Speed Math so every game presents the same control.
+function timeLimitChipRow(name, durationsInSeconds, active, cls){
+  const labels = {0:'Off',60:'1 min',120:'2 min',180:'3 min'};
+  const opts = durationsInSeconds.map(d=>({v:d, label:labels[d] || (d+'s')}));
+  return chipRow(name, opts, active, cls);
+}
+// Shared numeric chip row for ranges like word length / item counts (e.g. 1..10).
+function numberChipRow(name, min, max, active, cls){
+  const opts = [];
+  for(let i=min;i<=max;i++) opts.push({v:i, label:String(i)});
+  return chipRow(name, opts, active, cls);
+}
+
+/* ================= SESSION ENGINE (shared continuous-timed-mode system) =================
+   Any game with a "time limit" option other than Off uses this. It runs a countdown,
+   silently logs every question/answer, tracks streaks & accuracy, and hands off to the
+   shared Session Summary screen when time runs out. */
+window.session = null;
+
+function startSession(gameKey, seconds, onTimeout){
+  window.session = {
+    gameKey, seconds, remaining: seconds,
+    correct: 0, wrong: 0, streak: 0, bestStreak: 0,
+    log: [], timerId: null
+  };
+  window.session.timerId = setInterval(()=>{
+    if(!window.session) return;
+    window.session.remaining--;
+    const label = document.getElementById('sessionTimerLabel');
+    if(label) label.innerText = 'Time left: '+window.session.remaining+'s';
+    if(window.session.remaining<=0){
+      clearInterval(window.session.timerId);
+      onTimeout();
+    }
+  },1000);
+}
+function endSession(){
+  if(window.session && window.session.timerId) clearInterval(window.session.timerId);
+  window.session = null;
+}
+// Logs one answered question against the active session and updates streak/accuracy tallies.
+function sessionRecordAnswer(prompt, userAnswer, correctAnswer, ok){
+  const s = window.session;
+  if(!s) return;
+  const userDisplay = (userAnswer===''||userAnswer==null||Number.isNaN(userAnswer)) ? '(blank)' : userAnswer;
+  s.log.push({prompt, userAnswer:userDisplay, correctAnswer, ok});
+  if(ok){ s.correct++; s.streak++; if(s.streak>s.bestStreak) s.bestStreak = s.streak; }
+  else { s.wrong++; s.streak = 0; }
+}
+// Countdown label shown at the top of the play area whenever a timed session is running.
+function sessionTimerHtml(){
+  if(!window.session) return '';
+  return `<div class="opt-label session-timer" id="sessionTimerLabel">Time left: ${window.session.remaining}s</div>`;
+}
+// Brief 200ms visual feedback (border flash) on an element, used instead of a full result screen.
+function flashFeedback(el, ok){
+  if(!el) return;
+  const cls = ok ? 'flash-ok' : 'flash-no';
+  el.classList.add(cls);
+  setTimeout(()=>el.classList.remove(cls), 200);
+}
+// Persists new bests for a game's timed sessions, keeping the legacy `store[gameKey]` badge in sync.
+function saveSessionBests(gameKey, bestStreak, accuracy){
+  const streakKey = gameKey+'BestStreak', accKey = gameKey+'BestAccuracy';
+  if(bestStreak > (store[streakKey]||0)) store[streakKey] = bestStreak;
+  if(accuracy > (store[accKey]||0)) store[accKey] = accuracy;
+  if(bestStreak > (store[gameKey]||0)) store[gameKey] = bestStreak;
+  saveStore(); refreshBadges();
+}
+// Shared end-of-session screen: totals, accuracy, streaks, and a full per-question log.
+// replayFnName is the name (string) of the game's start function, e.g. "startSpeedMath".
+function showSessionSummary(cls, title, replayFnName){
+  const s = window.session;
+  if(!s){ navigateToHome(); return; }
+  const total = s.correct + s.wrong;
+  const acc = total ? Math.round((s.correct/total)*100) : 0;
+  saveSessionBests(s.gameKey, s.bestStreak, acc);
+  const rows = s.log.map((q,i)=>`
+    <div class="summary-row ${q.ok?'ok':'no'}">
+      <span class="summary-q">Q${i+1}: ${q.prompt}</span>
+      <span class="summary-a">${q.userAnswer} → ${q.correctAnswer} ${q.ok?'✓':'✗'}</span>
+    </div>`).join('');
+  panelTitle.innerText = title;
+  panelContent.innerHTML = `
+    <div class="summary ${cls}">
+      <h2>Session Summary</h2>
+      <div class="summary-stats">
+        <div><b>${total}</b><span>Attempted</span></div>
+        <div><b>${s.correct}</b><span>Correct</span></div>
+        <div><b>${s.wrong}</b><span>Wrong</span></div>
+        <div><b>${acc}%</b><span>Accuracy</span></div>
+        <div><b>${s.streak}</b><span>Streak</span></div>
+        <div><b>${s.bestStreak}</b><span>Best streak</span></div>
+      </div>
+      <div class="summary-list">${rows || '<p class="hint">No questions answered.</p>'}</div>
+      <div>
+        <button class="primary-btn ${cls}" onclick="${replayFnName}()">Play again</button>
+        <button class="back-btn" onclick="navigateToHome()">Back to menu</button>
+      </div>
+    </div>`;
+  endSession();
+}
 
 /* ================= FLASH ANZAN ================= */
-window.anzanDigits = 2; window.anzanCount = 5; window.anzanSpeed = 800; window.anzanOp = 'add';
+window.anzanDigits = 2; window.anzanCount = 7; window.anzanSpeed = 2000; window.anzanOp = 'add';
 function renderFlashAnzanSetup(){
   panelTitle.innerText = '🧠 Flash Anzan';
   panelContent.innerHTML = `
     <div class="opt-group"><div class="opt-label">Digit size</div>
       ${chipRow('anzanDigits',[{v:1,label:'1 digit'},{v:2,label:'2 digit'},{v:3,label:'3 digit'}],anzanDigits,'flash-anzan')}</div>
     <div class="opt-group"><div class="opt-label">How many numbers</div>
-      ${chipRow('anzanCount',[{v:3,label:'3'},{v:5,label:'5'},{v:7,label:'7'},{v:10,label:'10'}],anzanCount,'flash-anzan')}</div>
+      ${numberChipRow('anzanCount',1,10,anzanCount,'flash-anzan')}
+      <input class="field" type="number" id="anzanCountCustom" min="11" max="20" placeholder="11-20"
+        style="width:100px;padding:8px;font-size:14px;margin-top:8px;"
+        oninput="if(this.value){window.anzanCount=Math.min(20,Math.max(11,Number(this.value)));this.closest('.opt-group').querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));}">
+    </div>
     <div class="opt-group"><div class="opt-label">Flash speed (milliseconds)</div>
       <input class="field" type="number" id="anzanSpeedInput" value="${window.anzanSpeed}" min="100" max="5000" step="50" oninput="window.anzanSpeed = Number(this.value)" style="width: 140px; padding: 10px; font-size: 16px;">
     </div>
@@ -104,20 +226,28 @@ function showNextAnzanNumber(){
   window.anzanIndex++;
   setTimeout(()=>{ if(display) display.innerText=''; setTimeout(showNextAnzanNumber, window.anzanSpeed*0.4); }, window.anzanSpeed);
 }
+// Flash Anzan has no timed session — instead every round ends with a small round summary
+// listing all the flashed numbers alongside the correct total.
 function checkFlashAnzan(correct){
   const val = Number(document.getElementById('anzanAnswer').value);
   const ok = val === correct;
   if(ok){ store.flashAnzan = Math.max(store.flashAnzan, window.anzanCount); saveStore(); refreshBadges(); }
+  const numbersStr = window.anzanNumbers.map(n => (window.anzanOp==='mixed' && n>=0 ? '+'+n : n)).join('  ');
   panelContent.innerHTML = `
     <div class="result ${ok?'ok':'no'}">
       <h2>${ok?'🎉 Correct!':'❌ Answer: '+correct}</h2>
       <p>${ok?'Nice mental math.':'So close — try again.'}</p>
+      <div class="summary-list" style="margin:16px 0;">
+        <div class="summary-row"><span class="summary-q">Numbers flashed</span><span class="summary-a">${numbersStr}</span></div>
+        <div class="summary-row ${ok?'ok':'no'}"><span class="summary-q">Your answer</span><span class="summary-a">${val} → ${correct} ${ok?'✓':'✗'}</span></div>
+      </div>
       <button class="primary-btn flash-anzan" onclick="startFlashAnzan()">${ok?'Next round':'Try again'}</button>
     </div>`;
 }
 
 /* ================= SPEED MATH ================= */
-window.speedOp = 'mixed'; window.speedDiff = 'easy'; window.speedTimer = 0; window.speedStreak = 0;
+// speedTimeLimit is a session length in seconds (0 = Off), replacing the old per-question countdown.
+window.speedOp = 'mixed'; window.speedDiff = 'easy'; window.speedTimeLimit = 60; window.speedStreak = 0;
 function renderSpeedMathSetup(){
   window.speedStreak = 0;
   panelTitle.innerText = '⚡ Speed Math';
@@ -126,14 +256,12 @@ function renderSpeedMathSetup(){
       ${chipRow('speedOp',[{v:'add',label:'+'},{v:'sub',label:'−'},{v:'mul',label:'×'},{v:'mixed',label:'Mixed'}],speedOp,'speed-math')}</div>
     <div class="opt-group"><div class="opt-label">Difficulty</div>
       ${chipRow('speedDiff',[{v:'easy',label:'Easy'},{v:'medium',label:'Medium'},{v:'hard',label:'Hard'}],speedDiff,'speed-math')}</div>
-    <div class="opt-group"><div class="opt-label">Time per question</div>
-      ${chipRow('speedTimer',[{v:0,label:'Off'},{v:10,label:'10s'},{v:5,label:'5s'}],speedTimer,'speed-math')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('speedTimeLimit',[0,60,120],speedTimeLimit,'speed-math')}</div>
     <button class="primary-btn speed-math" onclick="startSpeedMath()">Start</button>
   `;
 }
-function startSpeedMath(){
-  panelTitle.innerText = '⚡ Speed Math';
-  clearInterval(window.speedTimerId);
+function genSpeedQuestion(){
   const cap = window.speedDiff==='easy'?20:window.speedDiff==='medium'?50:100;
   const ops = window.speedOp==='mixed' ? ['add','sub','mul'] : [window.speedOp];
   const op = ops[Math.floor(Math.random()*ops.length)];
@@ -142,26 +270,36 @@ function startSpeedMath(){
   if(op==='add'){ answer=a+b; symbol='+'; }
   if(op==='sub'){ if(b>a)[a,b]=[b,a]; answer=a-b; symbol='−'; }
   if(op==='mul'){ b = Math.floor(Math.random()*12)+1; answer=a*b; symbol='×'; }
-  window.speedAnswer = answer;
-  const timerHtml = window.speedTimer>0 ? `<div class="opt-label" id="speedTimerLabel">Time left: ${window.speedTimer}s</div>` : '';
+  return { prompt: `${a} ${symbol} ${b} = ?`, answer };
+}
+function startSpeedMath(){
+  panelTitle.innerText = '⚡ Speed Math';
+  if(window.speedTimeLimit>0 && !window.session){
+    startSession('speedMath', window.speedTimeLimit, ()=> showSessionSummary('speed-math','⚡ Speed Math','startSpeedMath'));
+  }
+  renderSpeedMathQuestion();
+}
+function renderSpeedMathQuestion(){
+  const q = genSpeedQuestion();
+  window.speedAnswer = q.answer; window.speedPrompt = q.prompt;
   panelContent.innerHTML = `
-    <div class="stage">${timerHtml}<div class="prompt">${a} ${symbol} ${b} = ?</div>
+    <div class="stage">${sessionTimerHtml()}<div class="prompt">${q.prompt}</div>
     <input class="field" id="speedAnswerInput" type="number" autofocus>
     <div><button class="primary-btn speed-math" onclick="checkSpeedMath()">Submit</button></div></div>`;
-  if(window.speedTimer>0){
-    let remaining = window.speedTimer;
-    window.speedTimerId = setInterval(()=>{
-      remaining--;
-      const label = document.getElementById('speedTimerLabel');
-      if(label) label.innerText = 'Time left: '+remaining+'s';
-      if(remaining<=0){ clearInterval(window.speedTimerId); checkSpeedMath(); }
-    },1000);
-  }
 }
 function checkSpeedMath(){
-  clearInterval(window.speedTimerId);
-  const val = Number(document.getElementById('speedAnswerInput').value);
+  const inputEl = document.getElementById('speedAnswerInput');
+  const val = Number(inputEl.value);
   const ok = val === window.speedAnswer;
+
+  if(window.session){
+    // Timed mode: log the answer, flash the border, then auto-advance — no result screen.
+    sessionRecordAnswer(window.speedPrompt, val, window.speedAnswer, ok);
+    flashFeedback(inputEl, ok);
+    setTimeout(()=>{ if(window.session) renderSpeedMathQuestion(); }, 200);
+    return;
+  }
+
   window.speedStreak = ok ? window.speedStreak+1 : 0;
   if(ok && window.speedStreak > (store.speedMath||0)){ store.speedMath = window.speedStreak; saveStore(); refreshBadges(); }
   panelContent.innerHTML = `
@@ -174,27 +312,39 @@ function checkSpeedMath(){
 }
 
 /* ================= LETTER CODING ================= */
-window.letterLen = 5; window.letterDir = 'l2n'; window.letterStreak = 0;
+// letterSet restricts which letters get used; letterTimeLimit (seconds, 0 = Off) drives timed mode.
+window.letterLen = 1; window.letterDir = 'l2n'; window.letterStreak = 0;
+window.letterSet = 'all'; window.letterTimeLimit = 0;
+const LETTER_SETS = { ai:'ABCDEFGHI', jr:'JKLMNOPQR', sz:'STUVWXYZ', all:'ABCDEFGHIJKLMNOPQRSTUVWXYZ' };
+
 function renderLetterCodeSetup(){
   window.letterStreak = 0;
   panelTitle.innerText = '🔤 Letter Coding';
   panelContent.innerHTML = `
+    <div class="opt-group"><div class="opt-label">Letter set</div>
+      ${chipRow('letterSet',[{v:'ai',label:'A–I'},{v:'jr',label:'J–R'},{v:'sz',label:'S–Z'},{v:'all',label:'All letters'}],letterSet,'letter-code')}</div>
     <div class="opt-group"><div class="opt-label">Word length</div>
-      ${chipRow('letterLen',[{v:3,label:'3'},{v:4,label:'4'},{v:5,label:'5'},{v:6,label:'6'},{v:7,label:'7'}],letterLen,'letter-code')}</div>
+      ${numberChipRow('letterLen',1,10,letterLen,'letter-code')}</div>
     <div class="opt-group"><div class="opt-label">Direction</div>
       ${chipRow('letterDir',[{v:'l2n',label:'Letters → Numbers'},{v:'n2l',label:'Numbers → Letters'}],letterDir,'letter-code')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('letterTimeLimit',[0,60,120],letterTimeLimit,'letter-code')}</div>
     <button class="primary-btn letter-code" onclick="startLetterCode()">Start</button>
   `;
 }
 function startLetterCode(){
   panelTitle.innerText = '🔤 Letter Coding';
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if(window.letterTimeLimit>0 && !window.session){
+    startSession('letterCode', window.letterTimeLimit, ()=> showSessionSummary('letter-code','🔤 Letter Coding','startLetterCode'));
+  }
+  const alphabet = LETTER_SETS[window.letterSet] || LETTER_SETS.all;
   let word = '';
   for(let i=0;i<window.letterLen;i++) word += alphabet[Math.floor(Math.random()*alphabet.length)];
   window.letterWord = word;
+  const timerHtml = sessionTimerHtml();
   if(window.letterDir==='l2n'){
     panelContent.innerHTML = `
-      <div class="stage">
+      <div class="stage">${timerHtml}
         <div class="prompt">${word}</div>
         <p class="opt-label">Type the corresponding numbers · A = 1, B = 2 … Z = 26</p>
         <input class="field" id="letterAnswer" placeholder="e.g. 1 2 3" autofocus>
@@ -202,8 +352,9 @@ function startLetterCode(){
       </div>`;
   } else {
     const numbers = [...word].map(l=>l.charCodeAt(0)-64);
+    window.letterPromptNumbers = numbers;
     panelContent.innerHTML = `
-      <div class="stage">
+      <div class="stage">${timerHtml}
         <div class="prompt">${numbers.join(' ')}</div>
         <p class="opt-label">Type the corresponding letters · 1 = A, 2 = B … 26 = Z</p>
         <input class="field" id="letterAnswer" placeholder="e.g. A B C" autofocus>
@@ -212,58 +363,87 @@ function startLetterCode(){
   }
 }
 function checkLetterCode(){
-  let ok, correctDisplay;
+  const inputEl = document.getElementById('letterAnswer');
+  const rawInput = inputEl.value;
+  let ok, correctDisplay, userDisplay, prompt;
   if(window.letterDir==='l2n'){
-    const input = document.getElementById('letterAnswer').value.trim().split(/\s+/).map(Number);
+    const input = rawInput.trim().split(/\s+/).map(Number);
     const correct = [...window.letterWord].map(l=>l.charCodeAt(0)-64);
     ok = JSON.stringify(input) === JSON.stringify(correct);
     correctDisplay = correct.join(' ');
+    userDisplay = rawInput.trim() || '(blank)';
+    prompt = window.letterWord;
   } else {
-    const input = document.getElementById('letterAnswer').value.trim().toUpperCase().replace(/\s+/g,'');
+    const input = rawInput.trim().toUpperCase().replace(/\s+/g,'');
     ok = input === window.letterWord;
     correctDisplay = window.letterWord;
+    userDisplay = input || '(blank)';
+    prompt = window.letterPromptNumbers.join(' ');
   }
+
+  if(window.session){
+    sessionRecordAnswer(prompt, userDisplay, correctDisplay, ok);
+    flashFeedback(inputEl, ok);
+    setTimeout(()=>{ if(window.session) startLetterCode(); }, 200);
+    return;
+  }
+
   window.letterStreak = ok ? window.letterStreak+1 : 0;
   if(ok && window.letterStreak > (store.letterCode||0)){ store.letterCode = window.letterStreak; saveStore(); refreshBadges(); }
+  // Off mode: on a wrong answer show both the correct answer and what the user typed.
   panelContent.innerHTML = `
     <div class="result ${ok?'ok':'no'}">
       <h2>${ok?'🎉 Correct!':'❌ Try again'}</h2>
-      <p>${ok?'Sharp conversion.':'Correct: '+correctDisplay}</p>
+      <p>${ok?'Sharp conversion.':'Correct: '+correctDisplay+' — you typed: '+userDisplay}</p>
       <button class="primary-btn letter-code" onclick="startLetterCode()">Next word</button>
       <div class="streak">Current streak: <b>${window.letterStreak}</b></div>
     </div>`;
 }
 
 /* ================= FLASH LETTER SUM ================= */
-window.falphaCount = 5; window.falphaSpeed = 800; window.falphaCase = 'upper';
+window.falphaCount = 5; window.falphaSpeed = 2500; window.falphaCase = 'upper'; window.falphaTimeLimit = 0;
 function renderFlashAlphaSetup(){
   panelTitle.innerText = '🔠 Flash Letter Sum';
   panelContent.innerHTML = `
     <div class="opt-group"><div class="opt-label">How many letters</div>
-      ${chipRow('falphaCount',[{v:3,label:'3'},{v:5,label:'5'},{v:7,label:'7'},{v:10,label:'10'}],falphaCount,'flash-alpha')}</div>
+      ${numberChipRow('falphaCount',1,10,falphaCount,'flash-alpha')}
+      <input class="field" type="number" id="falphaCountCustom" min="11" max="20" placeholder="11-20"
+        style="width:100px;padding:8px;font-size:14px;margin-top:8px;"
+        oninput="if(this.value){window.falphaCount=Math.min(20,Math.max(11,Number(this.value)));this.closest('.opt-group').querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));}">
+    </div>
     <div class="opt-group"><div class="opt-label">Flash speed</div>
-      ${chipRow('falphaSpeed',[{v:1200,label:'Slow'},{v:800,label:'Normal'},{v:500,label:'Fast'}],falphaSpeed,'flash-alpha')}</div>
+      ${chipRow('falphaSpeed',[{v:1200,label:'Slow'},{v:2500,label:'Normal'},{v:500,label:'Fast'}],falphaSpeed,'flash-alpha')}
+      <input class="field" type="number" id="falphaSpeedCustom" min="100" max="5000" step="50" placeholder="Custom ms" value="${window.falphaSpeed}"
+        style="width:140px;padding:8px;font-size:14px;margin-top:8px;"
+        oninput="window.falphaSpeed = Number(this.value); this.closest('.opt-group').querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));">
+    </div>
     <div class="opt-group"><div class="opt-label">Letter case</div>
       ${chipRow('falphaCase',[{v:'upper',label:'UPPERCASE'},{v:'lower',label:'lowercase'}],falphaCase,'flash-alpha')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('falphaTimeLimit',[0,60,120],falphaTimeLimit,'flash-alpha')}</div>
     <button class="primary-btn flash-alpha" onclick="startFlashAlpha()">Start</button>
   `;
 }
 function startFlashAlpha(){
   panelTitle.innerText = '🔠 Flash Letter Sum';
+  if(window.falphaTimeLimit>0 && !window.session){
+    startSession('flashAlpha', window.falphaTimeLimit, ()=> showSessionSummary('flash-alpha','🔠 Flash Letter Sum','startFlashAlpha'));
+  }
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const letters = Array.from({length:window.falphaCount}, ()=> alphabet[Math.floor(Math.random()*alphabet.length)]);
   window.falphaLetters = letters; window.falphaIndex = 0;
   panelContent.innerHTML = `
-    <div class="stage"><div class="flash" id="falphaFlash">Ready?</div>
+    <div class="stage">${sessionTimerHtml()}<div class="flash" id="falphaFlash">Ready?</div>
     <button class="primary-btn flash-alpha" onclick="showNextFlashAlphaLetter()">Begin</button></div>`;
 }
 function showNextFlashAlphaLetter(){
   if(window.falphaIndex >= window.falphaLetters.length){
     const answer = window.falphaLetters.reduce((sum,l)=> sum + (l.charCodeAt(0)-64), 0);
+    window.falphaAnswerCorrect = answer;
     panelContent.innerHTML = `
-      <div class="stage"><p class="opt-label">What's the sum of the numeric values?</p>
+      <div class="stage">${sessionTimerHtml()}<p class="opt-label">What's the sum of the numeric values?</p>
       <input class="field" id="falphaAnswer" type="number" autofocus>
-      <div><button class="primary-btn flash-alpha" onclick="checkFlashAlpha(${answer})">Submit</button></div></div>`;
+      <div><button class="primary-btn flash-alpha" onclick="checkFlashAlpha()">Submit</button></div></div>`;
     return;
   }
   const display = document.getElementById('falphaFlash');
@@ -272,9 +452,19 @@ function showNextFlashAlphaLetter(){
   window.falphaIndex++;
   setTimeout(()=>{ if(display) display.innerText=''; setTimeout(showNextFlashAlphaLetter, window.falphaSpeed*0.4); }, window.falphaSpeed);
 }
-function checkFlashAlpha(correct){
-  const val = Number(document.getElementById('falphaAnswer').value);
+function checkFlashAlpha(){
+  const correct = window.falphaAnswerCorrect;
+  const inputEl = document.getElementById('falphaAnswer');
+  const val = Number(inputEl.value);
   const ok = val === correct;
+
+  if(window.session){
+    sessionRecordAnswer(window.falphaLetters.join(''), val, correct, ok);
+    flashFeedback(inputEl, ok);
+    setTimeout(()=>{ if(window.session) startFlashAlpha(); }, 200);
+    return;
+  }
+
   if(ok){ store.flashAlpha = Math.max(store.flashAlpha, window.falphaCount); saveStore(); refreshBadges(); }
   panelContent.innerHTML = `
     <div class="result ${ok?'ok':'no'}">
@@ -312,6 +502,7 @@ const PERIODIC = [
 [116,'Lv','Livermorium',293],[117,'Ts','Tennessine',294],[118,'Og','Oganesson',294]
 ];
 window.elementRange = 36; window.elementFields = ['number','weight','name']; window.elementStreak = 0;
+window.elementTimeLimit = 0;
 function renderElementQuizSetup(){
   window.elementStreak = 0;
   panelTitle.innerText = '🧪 Element Quiz';
@@ -320,11 +511,16 @@ function renderElementQuizSetup(){
       ${chipRow('elementRange',[{v:20,label:'First 20'},{v:36,label:'First 36'},{v:54,label:'First 54'},{v:118,label:'All 118'}],elementRange,'element-quiz')}</div>
     <div class="opt-group"><div class="opt-label">What to guess</div>
       ${multiChipRow('elementFields',[{v:'number',label:'Atomic number'},{v:'weight',label:'Atomic weight'},{v:'name',label:'Element name'}],'element-quiz')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('elementTimeLimit',[0,60,120],elementTimeLimit,'element-quiz')}</div>
     <button class="primary-btn element-quiz" onclick="startElementQuiz()">Start</button>
   `;
 }
 function startElementQuiz(){
   panelTitle.innerText = '🧪 Element Quiz';
+  if(window.elementTimeLimit>0 && !window.session){
+    startSession('elementQuiz', window.elementTimeLimit, ()=> showSessionSummary('element-quiz','🧪 Element Quiz','startElementQuiz'));
+  }
   const pool = PERIODIC.slice(0, window.elementRange);
   const el = pool[Math.floor(Math.random()*pool.length)];
   window.elementAnswer = el;
@@ -334,17 +530,34 @@ function startElementQuiz(){
   if(fields.includes('weight')) inputs += `<div class="field-label">Atomic weight (nearest whole number)</div><input class="field" id="elWeight" type="number">`;
   if(fields.includes('name')) inputs += `<div class="field-label">Element name</div><input class="field" id="elName" type="text">`;
   panelContent.innerHTML = `
-    <div class="stage"><div class="prompt" style="font-size:64px;">${el[1]}</div>
+    <div class="stage">${sessionTimerHtml()}<div class="prompt" style="font-size:64px;">${el[1]}</div>
     ${inputs}
     <div><button class="primary-btn element-quiz" onclick="checkElementQuiz()">Submit</button></div></div>`;
 }
 function checkElementQuiz(){
   const el = window.elementAnswer;
   const fields = window.elementFields;
+  const numberEl = document.getElementById('elNumber');
+  const weightEl = document.getElementById('elWeight');
+  const nameEl = document.getElementById('elName');
   let ok = true;
-  if(fields.includes('number')) ok = ok && Number(document.getElementById('elNumber').value) === el[0];
-  if(fields.includes('weight')) ok = ok && Number(document.getElementById('elWeight').value) === el[3];
-  if(fields.includes('name')) ok = ok && document.getElementById('elName').value.trim().toLowerCase() === el[2].toLowerCase();
+  if(fields.includes('number')) ok = ok && Number(numberEl.value) === el[0];
+  if(fields.includes('weight')) ok = ok && Number(weightEl.value) === el[3];
+  if(fields.includes('name')) ok = ok && nameEl.value.trim().toLowerCase() === el[2].toLowerCase();
+
+  if(window.session){
+    const correctDisplay = `#${el[0]} ${el[2]}, weight ${el[3]}`;
+    const userDisplay = [
+      numberEl ? '#'+(numberEl.value||'?') : null,
+      weightEl ? (weightEl.value||'?')+' wt' : null,
+      nameEl ? (nameEl.value||'?') : null
+    ].filter(Boolean).join(', ') || '(blank)';
+    sessionRecordAnswer(el[1], userDisplay, correctDisplay, ok);
+    [numberEl, weightEl, nameEl].forEach(f=> f && flashFeedback(f, ok));
+    setTimeout(()=>{ if(window.session) startElementQuiz(); }, 200);
+    return;
+  }
+
   window.elementStreak = ok ? window.elementStreak+1 : 0;
   if(ok && window.elementStreak > (store.elementQuiz||0)){ store.elementQuiz = window.elementStreak; saveStore(); refreshBadges(); }
   panelContent.innerHTML = `
@@ -360,7 +573,17 @@ function checkElementQuiz(){
 const MORSE = {A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',
 M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',
 '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.'};
-window.morseSet = 'letters'; window.morseMode = 'normal'; window.morseThreshold = 300; window.morseStreak = 0; window.morseActive = false;
+// New required character-set groupings, plus the legacy numbers/mixed sets kept alongside them.
+const MORSE_SETS = {
+  easy: 'TEIMANSOH'.split(''),
+  medium: 'SOHDGKRUW'.split(''),
+  hard: 'BFJLCPQVXYZ'.split(''),
+  all: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+  numbers: '0123456789'.split(''),
+  mixed: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('')
+};
+window.morseSet = 'all'; window.morseMode = 'normal'; window.morseThreshold = 300; window.morseStreak = 0; window.morseActive = false;
+window.morseTimeLimit = 60;
 let morseInputAt = 0; // Tracks when a tap/hold starts
 
 function renderMorseCodeSetup(){
@@ -370,9 +593,11 @@ function renderMorseCodeSetup(){
    <div class="opt-group"><div class="opt-label">Mode</div>
       ${chipRow('morseMode',[{v:'normal',label:'Normal (A → ·—)'},{v:'reverse',label:'Reverse (·— → A)'}],morseMode,'morse-code')}</div>
     <div class="opt-group"><div class="opt-label">Character set</div>
-      ${chipRow('morseSet',[{v:'letters',label:'Letters'},{v:'numbers',label:'Numbers'},{v:'mixed',label:'Mixed'}],morseSet,'morse-code')}</div>
+      ${chipRow('morseSet',[{v:'easy',label:'Easy letters'},{v:'medium',label:'Medium letters'},{v:'hard',label:'Hard letters'},{v:'all',label:'All letters'},{v:'numbers',label:'Numbers'},{v:'mixed',label:'Mixed'}],morseSet,'morse-code')}</div>
     <div class="opt-group"><div class="opt-label">Tap sensitivity</div>
       ${chipRow('morseThreshold',[{v:400,label:'Slow'},{v:300,label:'Normal'},{v:220,label:'Fast'}],morseThreshold,'morse-code')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('morseTimeLimit',[0,60,120,180],morseTimeLimit,'morse-code')}</div>
     <p class="hint">Tap quickly for a dot, hold down for a dash.</p>
     <button class="primary-btn morse-code" onclick="startMorseCode()">Start</button>
   `;
@@ -380,16 +605,18 @@ function renderMorseCodeSetup(){
 
 function startMorseCode(){
   panelTitle.innerText = '📡 Morse Code';
-  const pool = window.morseSet==='letters' ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-    : window.morseSet==='numbers' ? '0123456789'.split('')
-    : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+  if(window.morseTimeLimit>0 && !window.session){
+    startSession('morseCode', window.morseTimeLimit, ()=>{ window.morseActive=false; showSessionSummary('morse-code','📡 Morse Code','startMorseCode'); });
+  }
+  const pool = MORSE_SETS[window.morseSet] || MORSE_SETS.all;
   window.morseChar = pool[Math.floor(Math.random()*pool.length)];
+  const timerHtml = sessionTimerHtml();
 
   if(window.morseMode === 'reverse'){
     window.morseActive = false; // Disable touch/spacebar listening
     const codeDisplay = MORSE[window.morseChar];
     panelContent.innerHTML = `
-      <div class="stage">
+      <div class="stage">${timerHtml}
         <div class="prompt" style="letter-spacing: 8px;">${codeDisplay}</div>
         <p class="opt-label">Type the matching character</p>
         <input class="field" id="morseReverseInput" type="text" maxlength="1" autofocus style="text-transform: uppercase; width: 80px; text-align: center; font-size: 28px;">
@@ -397,12 +624,15 @@ function startMorseCode(){
           <button class="primary-btn morse-code" onclick="checkMorseCode()">Submit</button>
         </div>
       </div>`;
+    // Timed reverse mode: always re-focus the input on each new question.
+    const inp = document.getElementById('morseReverseInput');
+    if(inp) inp.focus();
   } else {
     window.morseBuffer = '';
     window.morseActive = true;
     morseInputAt = 0;
     panelContent.innerHTML = `
-      <div class="stage">
+      <div class="stage">${timerHtml}
         <div class="prompt">${window.morseChar}</div>
         <p class="opt-label">Tap Spacebar or use the pad below</p>
         
@@ -431,17 +661,33 @@ function updateMorseDisplay(){
 function clearMorseBuffer(){ window.morseBuffer=''; updateMorseDisplay(); }
 function checkMorseCode(){
   window.morseActive = false;
-  let ok = false;
-  let message = '';
+  let ok = false, message = '', userDisplay, correctDisplay, prompt;
 
   if(window.morseMode === 'reverse'){
-    const inputVal = (document.getElementById('morseReverseInput').value || '').trim().toUpperCase();
+    const inputEl = document.getElementById('morseReverseInput');
+    const inputVal = (inputEl.value || '').trim().toUpperCase();
     ok = inputVal === window.morseChar;
+    userDisplay = inputVal || '(blank)'; correctDisplay = window.morseChar; prompt = MORSE[window.morseChar];
     message = ok ? 'Perfect decoding.' : MORSE[window.morseChar] + ' is ' + window.morseChar + ' — you typed ' + (inputVal || 'nothing');
+
+    if(window.session){
+      sessionRecordAnswer(prompt, userDisplay, correctDisplay, ok);
+      flashFeedback(inputEl, ok);
+      setTimeout(()=>{ if(window.session) startMorseCode(); }, 200);
+      return;
+    }
   } else {
     const correct = MORSE[window.morseChar];
     ok = window.morseBuffer === correct;
+    userDisplay = window.morseBuffer || '(blank)'; correctDisplay = correct; prompt = window.morseChar;
     message = ok ? 'Perfect timing.' : window.morseChar + ' is ' + correct + ' — you sent ' + (window.morseBuffer || 'nothing');
+
+    if(window.session){
+      sessionRecordAnswer(prompt, userDisplay, correctDisplay, ok);
+      flashFeedback(document.getElementById('morseDisplay'), ok);
+      setTimeout(()=>{ if(window.session) startMorseCode(); }, 200);
+      return;
+    }
   }
 
   window.morseStreak = ok ? window.morseStreak + 1 : 0;
@@ -488,3 +734,136 @@ document.addEventListener('keyup', (e)=>{
     triggerMorseUp(e);
   }
 });
+
+/* ================= ANGLE TABLE ================= */
+// Standard trig values at 0°, 30°, 45°, 60°, 90° for sin, cos, tan, cosec, sec, cot.
+// Values are stored as canonical strings ('1/2', '√3/2', '∞' for undefined, etc.) so they
+// can be shown directly and compared against a normalized version of what the user types.
+const ANGLE_TABLE = {
+  sin:   {0:'0',   30:'1/2',  45:'1/√2', 60:'√3/2', 90:'1'},
+  cos:   {0:'1',   30:'√3/2', 45:'1/√2', 60:'1/2',  90:'0'},
+  tan:   {0:'0',   30:'1/√3', 45:'1',    60:'√3',   90:'∞'},
+  cosec: {0:'∞',   30:'2',    45:'√2',   60:'2/√3', 90:'1'},
+  sec:   {0:'1',   30:'2/√3', 45:'√2',   60:'2',    90:'∞'},
+  cot:   {0:'∞',   30:'√3',   45:'1',    60:'1/√3', 90:'0'}
+};
+
+// Turns free-typed answers like "sqrt(3)/2", "0.5", or "1/root2" into the same canonical
+// tokens used in ANGLE_TABLE, so e.g. typing "1/2" for sin30 is accepted.
+function normalizeTrigAnswer(str){
+  if(str==null) return '';
+  let s = str.trim().toLowerCase().replace(/\s+/g,'');
+  if(['undefined','infinity','inf','na','n/a','∞'].includes(s)) return '∞';
+  s = s.replace(/root/g,'sqrt');
+  s = s.replace(/sqrt\(?3\)?/g,'√3');
+  s = s.replace(/sqrt\(?2\)?/g,'√2');
+  const decimalMap = {
+    '0':'0','1':'1','0.5':'1/2','.5':'1/2',
+    '0.87':'√3/2','0.866':'√3/2','0.8660':'√3/2','0.866025':'√3/2',
+    '0.71':'1/√2','0.707':'1/√2','0.7071':'1/√2','0.707107':'1/√2',
+    '1.73':'√3','1.732':'√3','1.7321':'√3',
+    '0.58':'1/√3','0.577':'1/√3','0.5774':'1/√3',
+    '1.41':'√2','1.414':'√2','1.4142':'√2',
+    '1.15':'2/√3','1.155':'2/√3','1.1547':'2/√3'
+  };
+  if(decimalMap[s]) s = decimalMap[s];
+  return s;
+}
+// Parses a "function + angle" answer like "sin30", "Sin 30°" or "csc45" for reverse mode.
+function parseFuncAngle(str){
+  if(!str) return null;
+  let s = str.trim().toLowerCase().replace(/\s+/g,'').replace(/°/g,'').replace(/csc/,'cosec');
+  const m = s.match(/^(sin|cos|tan|cosec|sec|cot)(\d+)$/);
+  if(!m || !ANGLE_TABLE[m[1]] || !(m[2] in ANGLE_TABLE[m[1]])) return null;
+  return { func:m[1], angle:Number(m[2]) };
+}
+
+window.angleFuncs = ['sin','cos','tan','cosec','sec','cot'];
+window.angleAngles = ['0','30','45','60','90'];
+window.angleMode = 'normal'; // 'normal' = function -> value, 'reverse' = value -> function
+window.angleStreak = 0;
+window.angleTimeLimit = 0;
+
+function renderAngleTableSetup(){
+  window.angleStreak = 0;
+  panelTitle.innerText = '📐 Angle Table';
+  panelContent.innerHTML = `
+    <div class="opt-group"><div class="opt-label">Mode</div>
+      ${chipRow('angleMode',[{v:'normal',label:'Function → Value'},{v:'reverse',label:'Value → Function'}],angleMode,'angle-table')}</div>
+    <div class="opt-group"><div class="opt-label">Functions</div>
+      ${multiChipRow('angleFuncs',[{v:'sin',label:'sin'},{v:'cos',label:'cos'},{v:'tan',label:'tan'},{v:'cosec',label:'cosec'},{v:'sec',label:'sec'},{v:'cot',label:'cot'}],'angle-table')}</div>
+    <div class="opt-group"><div class="opt-label">Angles</div>
+      ${multiChipRow('angleAngles',[{v:'0',label:'0°'},{v:'30',label:'30°'},{v:'45',label:'45°'},{v:'60',label:'60°'},{v:'90',label:'90°'}],'angle-table')}</div>
+    <div class="opt-group"><div class="opt-label">Time limit</div>
+      ${timeLimitChipRow('angleTimeLimit',[0,60,120],angleTimeLimit,'angle-table')}</div>
+    <p class="hint">e.g. type <b>1/2</b> for sin30, or type <b>sin30</b> / <b>cos60</b> when shown 1/2.</p>
+    <button class="primary-btn angle-table" onclick="startAngleTable()">Start</button>
+  `;
+}
+function startAngleTable(){
+  panelTitle.innerText = '📐 Angle Table';
+  if(window.angleTimeLimit>0 && !window.session){
+    startSession('angleTable', window.angleTimeLimit, ()=> showSessionSummary('angle-table','📐 Angle Table','startAngleTable'));
+  }
+  const funcs = window.angleFuncs.length ? window.angleFuncs : ['sin'];
+  const angles = window.angleAngles.length ? window.angleAngles : ['0'];
+  const func = funcs[Math.floor(Math.random()*funcs.length)];
+  const angle = Number(angles[Math.floor(Math.random()*angles.length)]);
+  window.angleFunc = func; window.angleAngle = angle; window.angleValue = ANGLE_TABLE[func][angle];
+  const timerHtml = sessionTimerHtml();
+
+  if(window.angleMode === 'reverse'){
+    // Value -> Function: show the value, ask for any matching "func+angle" pair (e.g. sin30).
+    panelContent.innerHTML = `
+      <div class="stage">${timerHtml}
+        <div class="prompt">${window.angleValue}</div>
+        <p class="opt-label">Type a matching function & angle, e.g. sin30 or cos60</p>
+        <input class="field" id="angleAnswer" placeholder="e.g. sin30" autofocus>
+        <div><button class="primary-btn angle-table" onclick="checkAngleTable()">Submit</button></div>
+      </div>`;
+  } else {
+    // Function -> Value: show e.g. "sin 30°", ask for the value as a fraction.
+    panelContent.innerHTML = `
+      <div class="stage">${timerHtml}
+        <div class="prompt">${func} ${angle}°</div>
+        <p class="opt-label">Type the value, e.g. 1/2 or √3/2</p>
+        <input class="field" id="angleAnswer" placeholder="e.g. 1/2" autofocus>
+        <div><button class="primary-btn angle-table" onclick="checkAngleTable()">Submit</button></div>
+      </div>`;
+  }
+}
+function checkAngleTable(){
+  const inputEl = document.getElementById('angleAnswer');
+  const raw = inputEl.value;
+  let ok, correctDisplay, userDisplay, prompt;
+
+  if(window.angleMode === 'reverse'){
+    const parsed = parseFuncAngle(raw);
+    ok = !!parsed && ANGLE_TABLE[parsed.func][parsed.angle] === window.angleValue;
+    correctDisplay = `${window.angleFunc}${window.angleAngle}`;
+    userDisplay = raw.trim() || '(blank)';
+    prompt = window.angleValue;
+  } else {
+    ok = normalizeTrigAnswer(raw) === window.angleValue;
+    correctDisplay = window.angleValue;
+    userDisplay = raw.trim() || '(blank)';
+    prompt = `${window.angleFunc} ${window.angleAngle}°`;
+  }
+
+  if(window.session){
+    sessionRecordAnswer(prompt, userDisplay, correctDisplay, ok);
+    flashFeedback(inputEl, ok);
+    setTimeout(()=>{ if(window.session) startAngleTable(); }, 200);
+    return;
+  }
+
+  window.angleStreak = ok ? window.angleStreak+1 : 0;
+  if(ok && window.angleStreak > (store.angleTable||0)){ store.angleTable = window.angleStreak; saveStore(); refreshBadges(); }
+  panelContent.innerHTML = `
+    <div class="result ${ok?'ok':'no'}">
+      <h2>${ok?'🎉 Correct!':'❌ Not quite'}</h2>
+      <p>${ok ? 'Trig mastery.' : 'Correct: '+correctDisplay+' — you typed: '+userDisplay+(window.angleMode==='reverse' ? ' (any function+angle equal to '+window.angleValue+' works)' : '')}</p>
+      <button class="primary-btn angle-table" onclick="startAngleTable()">Next question</button>
+      <div class="streak">Current streak: <b>${window.angleStreak}</b></div>
+    </div>`;
+}

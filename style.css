@@ -14,6 +14,7 @@
   --element-a: #34d399; --element-b: #86efac;
   --morse-a: #5b8def; --morse-b: #93b4ff;
   --angle-a: #fbbf24; --angle-b: #fde68a;
+  --pyth-a: #f43f5e; --pyth-b: #fda4af;
 
   --danger: #ff5c7a;
   --ok: #3ee08a;
@@ -77,6 +78,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.element-quiz::before { background: linear-gradient(90deg, var(--element-a), var(--element-b)); }
 .tile.morse-code::before { background: linear-gradient(90deg, var(--morse-a), var(--morse-b)); }
 .tile.angle-table::before { background: linear-gradient(90deg, var(--angle-a), var(--angle-b)); }
+.tile.pyth-triples::before { background: linear-gradient(90deg, var(--pyth-a), var(--pyth-b)); }
 
 .tile:hover { transform: translateY(-4px); }
 .tile.flash-anzan:hover { border-color: var(--anzan-a); box-shadow: 0 12px 32px -12px #7c5cf788; }
@@ -86,6 +88,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.element-quiz:hover { border-color: var(--element-a); box-shadow: 0 12px 32px -12px #34d39988; }
 .tile.morse-code:hover { border-color: var(--morse-a); box-shadow: 0 12px 32px -12px #5b8def88; }
 .tile.angle-table:hover { border-color: var(--angle-a); box-shadow: 0 12px 32px -12px #fbbf2488; }
+.tile.pyth-triples:hover { border-color: var(--pyth-a); box-shadow: 0 12px 32px -12px #f43f5e88; }
 
 .tile .icon {
   width: 52px; height: 52px; border-radius: 14px;
@@ -99,6 +102,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.element-quiz .icon { background: linear-gradient(135deg, var(--element-a)33, var(--element-b)22); }
 .tile.morse-code .icon { background: linear-gradient(135deg, var(--morse-a)33, var(--morse-b)22); }
 .tile.angle-table .icon { background: linear-gradient(135deg, var(--angle-a)33, var(--angle-b)22); }
+.tile.pyth-triples .icon { background: linear-gradient(135deg, var(--pyth-a)33, var(--pyth-b)22); }
 
 .tile h2 { font-size: 19px; margin: 0 0 4px; }
 .tile p { color: var(--text-dim); font-size: 13.5px; margin: 0 0 18px; }
@@ -117,6 +121,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.element-quiz .go { background: linear-gradient(135deg, var(--element-a), var(--element-b)); }
 .tile.morse-code .go { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); }
 .tile.angle-table .go { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); }
+.tile.pyth-triples .go { background: linear-gradient(135deg, var(--pyth-a), var(--pyth-b)); }
 
 /* ---- Panel (Setup / Play) ---- */
 .panel {
@@ -150,6 +155,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .chip.active.element-quiz { background: linear-gradient(135deg, var(--element-a), var(--element-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 .chip.active.morse-code { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 .chip.active.angle-table { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
+.chip.active.pyth-triples { background: linear-gradient(135deg, var(--pyth-a), var(--pyth-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 
 .primary-btn {
   border: 0; border-radius: 13px; padding: 14px 30px; font-size: 16px; font-weight: 600;
@@ -162,6 +168,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .primary-btn.element-quiz { background: linear-gradient(135deg, var(--element-a), var(--element-b)); }
 .primary-btn.morse-code { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); }
 .primary-btn.angle-table { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); }
+.primary-btn.pyth-triples { background: linear-gradient(135deg, var(--pyth-a), var(--pyth-b)); }
 
 .stage { text-align: center; padding: 18px 0 6px; }
 .flash {
@@ -263,3 +270,4 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .summary.element-quiz .summary-stats b { color: var(--element-a); }
 .summary.morse-code .summary-stats b { color: var(--morse-a); }
 .summary.angle-table .summary-stats b { color: var(--angle-a); }
+.summary.pyth-triples .summary-stats b { color: var(--pyth-a); }

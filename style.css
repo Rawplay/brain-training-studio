@@ -13,6 +13,7 @@
   --falpha-a: #f7568c; --falpha-b: #ff96b8;
   --element-a: #34d399; --element-b: #86efac;
   --morse-a: #5b8def; --morse-b: #93b4ff;
+  --angle-a: #fbbf24; --angle-b: #fde68a;
 
   --danger: #ff5c7a;
   --ok: #3ee08a;
@@ -75,6 +76,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.flash-alpha::before { background: linear-gradient(90deg, var(--falpha-a), var(--falpha-b)); }
 .tile.element-quiz::before { background: linear-gradient(90deg, var(--element-a), var(--element-b)); }
 .tile.morse-code::before { background: linear-gradient(90deg, var(--morse-a), var(--morse-b)); }
+.tile.angle-table::before { background: linear-gradient(90deg, var(--angle-a), var(--angle-b)); }
 
 .tile:hover { transform: translateY(-4px); }
 .tile.flash-anzan:hover { border-color: var(--anzan-a); box-shadow: 0 12px 32px -12px #7c5cf788; }
@@ -83,6 +85,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.flash-alpha:hover { border-color: var(--falpha-a); box-shadow: 0 12px 32px -12px #f7568c88; }
 .tile.element-quiz:hover { border-color: var(--element-a); box-shadow: 0 12px 32px -12px #34d39988; }
 .tile.morse-code:hover { border-color: var(--morse-a); box-shadow: 0 12px 32px -12px #5b8def88; }
+.tile.angle-table:hover { border-color: var(--angle-a); box-shadow: 0 12px 32px -12px #fbbf2488; }
 
 .tile .icon {
   width: 52px; height: 52px; border-radius: 14px;
@@ -95,6 +98,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.flash-alpha .icon { background: linear-gradient(135deg, var(--falpha-a)33, var(--falpha-b)22); }
 .tile.element-quiz .icon { background: linear-gradient(135deg, var(--element-a)33, var(--element-b)22); }
 .tile.morse-code .icon { background: linear-gradient(135deg, var(--morse-a)33, var(--morse-b)22); }
+.tile.angle-table .icon { background: linear-gradient(135deg, var(--angle-a)33, var(--angle-b)22); }
 
 .tile h2 { font-size: 19px; margin: 0 0 4px; }
 .tile p { color: var(--text-dim); font-size: 13.5px; margin: 0 0 18px; }
@@ -112,6 +116,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .tile.flash-alpha .go { background: linear-gradient(135deg, var(--falpha-a), var(--falpha-b)); }
 .tile.element-quiz .go { background: linear-gradient(135deg, var(--element-a), var(--element-b)); }
 .tile.morse-code .go { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); }
+.tile.angle-table .go { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); }
 
 /* ---- Panel (Setup / Play) ---- */
 .panel {
@@ -144,6 +149,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .chip.active.flash-alpha { background: linear-gradient(135deg, var(--falpha-a), var(--falpha-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 .chip.active.element-quiz { background: linear-gradient(135deg, var(--element-a), var(--element-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 .chip.active.morse-code { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
+.chip.active.angle-table { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); color: #0a0b14; border-color: transparent; font-weight: 600; }
 
 .primary-btn {
   border: 0; border-radius: 13px; padding: 14px 30px; font-size: 16px; font-weight: 600;
@@ -155,6 +161,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
 .primary-btn.flash-alpha { background: linear-gradient(135deg, var(--falpha-a), var(--falpha-b)); }
 .primary-btn.element-quiz { background: linear-gradient(135deg, var(--element-a), var(--element-b)); }
 .primary-btn.morse-code { background: linear-gradient(135deg, var(--morse-a), var(--morse-b)); }
+.primary-btn.angle-table { background: linear-gradient(135deg, var(--angle-a), var(--angle-b)); }
 
 .stage { text-align: center; padding: 18px 0 6px; }
 .flash {
@@ -207,3 +214,52 @@ main { max-width: 1000px; margin: 0 auto; padding: 6px 22px 60px; }
   color: #0a0b14;
   transform: scale(0.97);
 }
+
+/* ---- Session Timer & Summary ---- */
+/* Countdown label shown at the top of the play area during any timed session. */
+.session-timer {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px;
+  display: inline-block; padding: 6px 14px; border-radius: 10px;
+  background: #191c34; border: 1px solid var(--line);
+}
+
+/* Brief 200ms border flash used for feedback in continuous timed mode (replaces per-question result screen). */
+.field.flash-ok { border-color: var(--ok); box-shadow: 0 0 0 2px #3ee08a33; }
+.field.flash-no { border-color: var(--danger); box-shadow: 0 0 0 2px #ff5c7a33; }
+.morse-buffer.flash-ok { color: var(--ok); }
+.morse-buffer.flash-no { color: var(--danger); }
+
+/* Shared end-of-session Session Summary screen. */
+.summary { padding: 6px 0; }
+.summary h2 { font-size: 24px; margin: 0 0 18px; }
+.summary-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 10px; margin-bottom: 20px;
+}
+.summary-stats > div {
+  background: #191c34; border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 8px; text-align: center;
+}
+.summary-stats b { display: block; font-size: 22px; font-family: 'Space Grotesk', sans-serif; }
+.summary-stats span { font-size: 11px; color: var(--text-dim); }
+.summary-list {
+  max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px;
+  padding: 6px 12px; margin-bottom: 20px;
+}
+.summary-row {
+  display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
+  border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.summary-row:last-child { border-bottom: none; }
+.summary-row.ok .summary-a { color: var(--ok); }
+.summary-row.no .summary-a { color: var(--danger); }
+.summary-q { color: var(--text-dim); }
+
+/* Accent the Summary screen's stat numbers with the current game's own color. */
+.summary.flash-anzan .summary-stats b { color: var(--anzan-a); }
+.summary.speed-math .summary-stats b { color: var(--speed-a); }
+.summary.letter-code .summary-stats b { color: var(--letter-a); }
+.summary.flash-alpha .summary-stats b { color: var(--falpha-a); }
+.summary.element-quiz .summary-stats b { color: var(--element-a); }
+.summary.morse-code .summary-stats b { color: var(--morse-a); }
+.summary.angle-table .summary-stats b { color: var(--angle-a); }
